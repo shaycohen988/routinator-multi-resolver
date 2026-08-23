@@ -1,59 +1,53 @@
-# Routinator
+# RobustRP
 
-<img align="right" src="https://www.nlnetlabs.nl/static/logos/Routinator/Routinator_Avatar_Realistic.svg" height="150">
+A fork of [Routinator](https://github.com/NLnetLabs/routinator) (v0.15.2) that improves RPKI fetch resilience for CDN-fronted publication points by querying ten geographically distributed DNS resolvers in parallel and presenting the full union of returned IPs as failover candidates.
 
-[![crates.io](https://img.shields.io/crates/v/routinator.svg?color=brightgreen)](https://crates.io/crates/routinator)
-[![CI](https://github.com/NLnetLabs/routinator/workflows/ci/badge.svg)](https://github.com/NLnetLabs/routinator/actions?query=workflow%3Aci)
-[![Packaging](https://github.com/NLnetLabs/routinator/actions/workflows/pkg.yml/badge.svg)](https://nlnetlabs.nl/packages/)
-[![Docker Pulls](https://img.shields.io/docker/pulls/nlnetlabs/routinator?color=brightgreen)](https://hub.docker.com/r/nlnetlabs/routinator)
-[![Documentation Status](https://readthedocs.org/projects/routinator/badge/?version=stable)](https://routinator.docs.nlnetlabs.nl/en/stable/)
+## Background
 
-[![Discuss on Discourse](https://img.shields.io/badge/Discourse-NLnet_Labs-orange?logo=Discourse)](https://community.nlnetlabs.nl/c/rpki/11)
-[![Discord](https://img.shields.io/discord/818584154278199396?label=Discord&logo=discord)](https://discord.gg/8dvKB5Ykhy)
-[![Mastodon Follow](https://img.shields.io/mastodon/follow/114692612288811644?domain=social.nlnetlabs.nl&style=social)](https://social.nlnetlabs.nl/@nlnetlabs)
+RPKI Relying Parties (RPs) fetch signed objects from publication points (PPs) over RRDP (HTTP). Many major PPs such as RIPE NCC are fronted by DNS geo-routing CDNs. These CDNs return the IP of the nearest Point of Presence (PoP) based on the querying resolver's location, so a standard RP using a single system resolver only ever sees one PoP's IPs. If that PoP becomes unreachable, the fetch fails even though other PoPs are healthy.
+Failure to retrieve updated RPKI objects creates a significant security issue, potentially exposing the network to BGP hijacks.
 
-Routinator 3000 is free, open-source RPKI Relying Party software. The project
-is written in Rust, a programming language designed for performance and
-memory safety.
+RobustRP queries resolvers from five geographic regions simultaneously, over both A and AAAA records. Because each resolver is steered to a different PoP, the union pool spans multiple PoPs across both address families. If a connection to one IP fails, the RP automatically retries the next candidate, providing transparent failover across PoPs.
 
-### Lightweight and portable
+## What Changed
 
-Routinator has minimal system requirements and it can run on almost any
-hardware and platform, with packages available for most. You can also easily
-run with Docker or Cargo, the Rust package manager.
+Roughly 145 lines across four files — no changes to validation logic, TAL handling, manifest verification, or VRP output:
 
-### Full-featured and secure
+| File | Change |
+|---|---|
+| `src/collector/rrdp/dns.rs` | New file — `MultiIpResolver` implementation |
+| `src/collector/rrdp/http.rs` | Hook resolver into reqwest client builder |
+| `src/collector/rrdp/mod.rs` | Register `dns` module |
+| `Cargo.toml` | Add `hickory-resolver` dependency |
 
-Routinator runs as a service that periodically downloads and verifies RPKI
-data. The built-in HTTPS server offers a user interface, API endpoints for
-various file formats, as well as logging, status and Prometheus metrics.
+### Upstream resolvers
 
-### Flexible RPKI-to-Router (RTR) support
+| Region | Resolver | Address |
+|---|---|---|
+| North America | Google | 8.8.8.8 |
+| North America | OpenDNS | 208.67.222.222 |
+| Global | Cloudflare | 1.1.1.1 |
+| Europe | Quad9 | 9.9.9.9 |
+| Europe | AdGuard | 94.140.14.14 |
+| Eastern Europe | Yandex | 77.88.8.8 |
+| Asia-Pacific | 114DNS | 114.114.114.114 |
+| Asia-Pacific | AliDNS | 223.5.5.5 |
+| Asia-Pacific | DNSPod | 119.29.29.29 |
+| Asia-Pacific | TWNIC | 101.101.101.101 |
 
-Routinator has a built-in RTR server to let routers fetch verified RPKI data.
-You can also run RTR as a separate daemon using our RPKI data proxy
-[RTRTR](https://www.nlnetlabs.nl/projects/rpki/rtrtr/), letting you
-centralise validation and securely distribute processed data to various
-locations.
+## Build and Run
 
-### Open-source with professional support services
+Building, configuration, and every runtime option are unchanged from upstream Routinator. Follow the [Routinator documentation](https://routinator.docs.nlnetlabs.nl/).
 
-NLnet Labs offers [professional support and consultancy
-services](https://www.nlnetlabs.nl/services/contracts/) with a service-level
-agreement. Community support is available on
-[Discord](https://discord.gg/8dvKB5Ykhy), and our [mailing
-list](https://lists.nlnetlabs.nl/mailman/listinfo/rpki). Routinator is
-liberally licensed under the [BSD 3-Clause
-license](https://github.com/NLnetLabs/routinator/blob/main/LICENSE).
+The multi-resolver DNS pool itself needs no configuration — it is automatically active for all RRDP fetches.
 
-## Launch Smoothly
+## How It Works
 
-Getting started with Routinator is really easy by installing a binary package
-for either Debian and Ubuntu or for Red Hat Enterprise Linux (RHEL) and
-compatible systems such as Rocky Linux. Alternatively, you can run with
-Docker or build from the source code using Cargo, Rust’s build system and
-package manager.
+`MultiIpResolver` implements reqwest's `dns::Resolve`. On each DNS lookup it fires ten concurrent queries via `hickory-resolver`, requesting both A and AAAA records from each upstream. It collects all results, removes duplicates by using a `HashSet`, and returns the full pool to reqwest.
 
-Please refer to the comprehensive
-[documentation](https://routinator.docs.nlnetlabs.nl/) to learn what works
-best for you.
+reqwest's connection logic iterates the pool in order, moving to the next candidate on failure, so PoP-level failover is completely transparent to the rest of Routinator.
+
+## Based On
+
+Routinator 0.15.2 by [NLnet Labs](https://nlnetlabs.nl), licensed BSD-3-Clause.
+This fork carries the same license.

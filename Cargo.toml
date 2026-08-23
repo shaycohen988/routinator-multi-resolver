@@ -1,7 +1,7 @@
 [package]
 # Note: some of these values are also used when building Debian packages below.
 name = "routinator"
-version = "0.15.2"
+version = "0.15.3-dev"
 edition = "2021"
 rust-version = "1.86"
 resolver = "3"
@@ -25,6 +25,7 @@ crossbeam-queue = "0.3.1"
 dirs            = "6"
 form_urlencoded = "1.0"
 futures         = "0.3.4"
+hickory-resolver  = { version = "0.24", features = ["tokio-runtime"] }
 http-body-util  = "0.1"
 hyper           = { version = "1.2", features = [ "server" ] }
 hyper-util      = { version = "0.1", features = [ "server" ] }

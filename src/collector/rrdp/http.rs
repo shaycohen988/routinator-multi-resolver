@@ -13,6 +13,8 @@ use rpki::uri;
 use crate::config::Config;
 use crate::error::Fatal;
 use crate::utils::date::{format_http_date, parse_http_date};
+use std::sync::Arc;
+use super::dns::MultiIpResolver;
 
 
 //------------ HttpClient ----------------------------------------------------
@@ -51,6 +53,7 @@ impl HttpClient {
         builder = builder.tcp_keepalive(config.rrdp_tcp_keepalive);
         builder = builder.timeout(None); // Set per request.
         builder = builder.gzip(true);
+        builder = builder.dns_resolver(Arc::new(MultiIpResolver::new()));
         builder = builder.redirect(
             redirect::Policy::custom(Self::redirect_policy)
         );
